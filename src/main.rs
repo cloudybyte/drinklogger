@@ -4,6 +4,7 @@ use std::{env, io::Read, thread, time::Duration};
 
 //use mfrc522::Mfrc522;
 use pwr_hd44780::Hd44780;
+use rand::Rng;
 use rfid_rs::{MFRC522, picc};
 use spidev::{SpiModeFlags, Spidev, SpidevOptions};
 
@@ -14,12 +15,19 @@ fn main() {
     
     let args: Vec<String> = env::args().collect();
     
+    let spi = create_spi().unwrap();
+    let mut reader = rfid_rs::MFRC522 { spi };
+    reader.init().expect("Init failed!");
+
     if let Some(option) = args.get(1) {
         if option == &"start".to_string() {
-            let spi = create_spi().unwrap();
-            let mut reader = rfid_rs::MFRC522 { spi };
-            reader.init().expect("Init failed!");
             test(reader);
+        } else if option == &"write".to_string() {
+            if let Some(name) = args.get(2) {
+                let id = write_chip(reader);
+            } else {
+                panic!("expected 'name' as second argument");
+            }
         }
     } else {
         panic!("either 'start' or 'write' as first argument required");
@@ -42,6 +50,54 @@ fn create_spi() -> io::Result<Spidev> {
         .build();
     spi.configure(&options)?;
     Ok(spi)
+}
+
+fn write_chip(mut reader: MFRC522) -> [u8; 16] {
+    loop {
+        let new_card = reader.new_card_present().is_ok();
+
+        if new_card {
+            let key: rfid_rs::MifareKey = [0xffu8; 6];
+
+            let uid = match reader.read_card_serial() {
+                Ok(u) => u,
+                Err(e) => {
+                    println!("Could not read card: {:?}", e);
+                    continue
+                },
+            };
+
+            let block = 1;
+           // let buffer = [0x42u8, 0x66u8, 0x13u8, 0x69u8, 0x42u8, 0x66u8, 0x13u8, 0x69u8,
+            //              0x42u8, 0x66u8, 0x13u8, 0x69u8, 0x42u8, 0x66u8, 0x13u8, 0x69u8];
+
+            let mut rng = rand::thread_rng();
+
+            let buffer: [u8; 16] = rng.gen();
+
+            match reader.authenticate(picc::Command::MfAuthKeyA, block, key, &uid) {
+                Ok(_) => println!("Authenticated card"),
+                Err(e) => {
+                    println!("Could not authenticate card {:?}", e);
+                    continue
+                }
+            }
+            match reader.mifare_write(block, &buffer) {
+                Ok(_) => {
+                    println!("Wrote block {} successfully", block);
+                    return buffer;
+                },
+                Err(e) => {
+                    println!("Failed reading block {}: {:?}", block, e);
+                    continue
+                }
+            }
+
+            reader.halt_a().expect("Could not halt");
+            reader.stop_crypto1().expect("Could not stop crypto1");
+        }
+    }
+
 }
 
 

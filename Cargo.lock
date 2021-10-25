@@ -81,6 +81,7 @@ name = "drinklogger"
 version = "0.1.0"
 dependencies = [
  "pwr-hd44780",
+ "rand",
  "rfid-rs",
  "spidev",
 ]
