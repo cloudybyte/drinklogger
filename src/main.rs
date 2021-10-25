@@ -20,17 +20,22 @@ fn main() {
     reader.init().expect("Init failed!");
 
     if let Some(option) = args.get(1) {
-        if option == &"start".to_string() {
+
+        if option == &"test".to_string() {
+            test(reader);
+        }
+        else if option == &"test".to_string() {
             test(reader);
         } else if option == &"write".to_string() {
             if let Some(name) = args.get(2) {
                 let id = write_chip(reader);
+                print_lcd(format!("{}", id.first().unwrap()));
             } else {
                 panic!("expected 'name' as second argument");
             }
         }
     } else {
-        panic!("either 'start' or 'write' as first argument required");
+        panic!("either start, 'test' or 'write' as first argument required");
     }
     
     /*let spi = create_spi().unwrap();
@@ -104,7 +109,7 @@ fn write_chip(mut reader: MFRC522) -> [u8; 16] {
 
 fn test(mut mfrc522: MFRC522) {
 
-    loop {
+    
         let new_card = mfrc522.new_card_present().is_ok();
 
         if new_card {
@@ -114,54 +119,40 @@ fn test(mut mfrc522: MFRC522) {
                 Ok(u) => u,
                 Err(e) => {
                     println!("Could not read card: {:?}", e);
-                    continue
+                    return;
                 },
             };
 
-            let mut block = 4;
+            let mut block = 1;
             let len = 18;
 
             match mfrc522.authenticate(picc::Command::MfAuthKeyA, block, key, &uid) {
                 Ok(_) => println!("Authenticated card"),
                 Err(e) => {
                     println!("Could not authenticate card {:?}", e);
-                    continue
+                    return;
                 }
             }
             match mfrc522.mifare_read(block, len) {
-                Ok(response) => println!("Read block {}: {:?}", block, response.data),
+                Ok(response) => {
+                    println!("Read block {}: {:?}", block, response.data);
+                    print_lcd(format!("{}", response.data.first().unwrap()));
+            },
                 Err(e) => {
                     println!("Failed reading block {}: {:?}", block, e);
-                    continue
-                }
-            }
-
-            block = 1;
-
-            match mfrc522.authenticate(picc::Command::MfAuthKeyA, block, key, &uid) {
-                Ok(_) => println!("Authenticated card"),
-                Err(e) => {
-                    println!("Could not authenticate card {:?}", e);
-                    continue
-                }
-            }
-            match mfrc522.mifare_read(block, len) {
-                Ok(response) => println!("Read block {}: {:?}", block, response.data),
-                Err(e) => {
-                    println!("Failed reading block {}: {:?}", block, e);
-                    continue
+                    return;
                 }
             }
 
             mfrc522.halt_a().expect("Could not halt");
             mfrc522.stop_crypto1().expect("Could not stop crypto1");
         }
-    }
+
 
 }
 
 
-fn print_lcd() {
+fn print_lcd(string: String) {
         // create the LCD's bus instance;
     // use device at address 0x27 on the first I2C bus
     let lcd_bus = pwr_hd44780::I2CBus::new(
@@ -177,8 +168,8 @@ fn print_lcd() {
 
     // finally - print our text
     lcd.clear().unwrap();
-    thread::sleep(Duration::from_secs(3));
-    lcd.print("Hello World! :-)").unwrap();
+    lcd.set_backlight(true).unwrap();
+    lcd.print(string).unwrap();
     thread::sleep(Duration::from_secs(3));
     lcd.clear().unwrap();
     lcd.set_backlight(false).unwrap();
